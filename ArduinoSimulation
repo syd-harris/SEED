@@ -1,0 +1,156 @@
+#include "Arduino.h"
+#include <Encoder.h> //https://www.pjrc.com/teensy/td_libs_Encoder.html
+
+
+// PIN ASSIGNMENTS
+int D2 = 4;     // disables both outputs of motor channels when LOW; toggling resets latched driver fault condition
+int M1DIR = 7;  // Motor 1 direction output
+int M2DIR = 8;  // Motor 2 direction output
+int M1PWM = 9;  // Motor 1 PWM speed output
+int M2PWM = 10; // Motor 2 PWM speed output
+int SF = 12;    // Status flag indicator (LOW = fault)
+int speed1 = 0; // Motor 1 speed percentage
+int speed2 = 0; // Motor 2 speed percentage
+int dir1 = 1;
+int dir2 = 0;
+int encoderM1_Int = 2; //interrupt pin
+int encoderM1_noInt = 13; //non interrupt pin
+
+// VARIABLES
+double posM1raw = 0; //encoder counts
+double posM1 = 0; // in radians
+double posM1_old = 0;
+double angularVelocityM1 = 0; //radians / seconds
+double posM1Setpoint = 0; //setpoint in radians
+double errorM1 = 0; //error in radians
+double errorM1_old = 0;
+
+// PID VARIABLES
+double Kp = 3250;
+double Ki = 33361;
+double Kd = 140;
+double D = 0;
+double I = 0;
+double pidM1;
+int outputMax = 255; //max PWM output
+
+double time_now = 0;
+int period = 5; //milliseconds
+double timeStart = 4294967296;
+bool timeFlag = false;
+
+Encoder encoderM1(encoderM1_Int, encoderM1_noInt);
+
+void setup() {
+  // put your setup code here, to run once:
+  pinMode(D2, OUTPUT);
+  pinMode(M1DIR, OUTPUT);
+  pinMode(M2DIR, OUTPUT);
+  pinMode(M1PWM, OUTPUT);
+  pinMode(M2PWM, OUTPUT);
+  pinMode(SF, INPUT);
+  
+  Serial.begin(115200);
+  // reserve 200 bytes for the inputString:
+  InputString.reserve(200);
+  Serial.println("Ready!"); // Let anyone on the other end of the serial line know that Arduino is ready
+}
+
+void loop() {
+  time_now = millis();
+  
+  // Change behavior based on serial input
+  if (StringComplete) {
+    switch (InputString.charAt(0)) {
+      case 'S':
+        simulating = true;
+        timeFlag = true;
+        break;
+    }
+    StringComplete = false;
+  }
+
+  if (simulating) {
+    if (timeFlag){ //get time at start of simulation
+          timeStart = millis(); //set time in millis at start of simulation
+          timeFlag = false;
+    }
+    counter = millis() - timeStart;
+     if (counter > 1000) //at t = 1000 ms, perform step intput (from 0 to 1 rads)
+     {
+      posM1Setpoint = 1;
+    }
+    if (counter >= 2000) { //end simulation
+      Serial.println("Finished");
+      simulating = false;
+    }
+  }
+  else {
+    counter = 0;
+  }
+  
+  digitalWrite(D2, HIGH); //enables the motors
+
+  posM1raw = encoderM1.read(); //64 counts per revolution when counting both, units: encoder counts
+  posM1_old = posM1;
+  posM1 = (posM1raw / 50 / 64) * 6.28; //units: radians
+
+  errorM1_old = errorM1;
+  errorM1 = posM1Setpoint - posM1; //error in radians
+
+  D = (errorM1-errorM1_old)/(period*0.001); // change in error / time in seconds
+  I = I+(errorM1*period*0.001);   // integral of error
+  pidM1 = (Kp*errorM1) + (Ki*I) + (Kd*D);
+  if (pidM1 < 0) dir1 = 0; //set direction of motor
+  else dir1 = 1;
+
+  // PWM has a max output of 255, so we need to cap the PID output at 255
+  if (abs(pidM1) > 255){
+    if (pidM1 < 0) dir1 = 0;
+    else dir1 = 1;
+    pidM1 = outputMax;
+    int errSign = 1;
+    if (errorM1 < 0) errSign = -1;
+    errorM1 = errSign*min(outputMax/Kp, abs(errorM1));
+    I = (pidM1-Kp*errorM1-Kd*D)/Ki;
+  }
+
+// set SPEED
+  if (abs(errorM1) < 0.005) speed1 = 0;
+  else speed1 = int(abs(pidM1));
+  analogWrite(M1PWM, speed1);
+// set DIRECTION
+  if (dir1 == 0) digitalWrite(M1DIR, LOW);
+  else digitalWrite(M1DIR, HIGH);
+  
+
+  Serial.print(counter);
+  Serial.print("\t");
+  Serial.print(posM1);
+  Serial.println("");
+
+
+  while(millis() < time_now + period);  // delay for length of period
+}
+
+
+/*
+  SerialEvent occurs whenever a new data comes in the
+ hardware serial RX.  This routine is run between each
+ time loop() runs, so using delay inside loop can delay
+ response.  Multiple bytes of data may be available.
+ */
+
+void serialEvent() {
+  while (Serial.available()) {
+    // get the new byte:
+    char inChar = (char)Serial.read();
+    // add it to the inputString:
+    InputString += inChar;
+    // if the incoming character is a newline, set a flag
+    // so the main loop can do something about it:
+    if (inChar == '\n') {
+      StringComplete = true;
+    }
+  }
+}
