@@ -1,6 +1,8 @@
 #include "Arduino.h"
 #include <Encoder.h> //https://www.pjrc.com/teensy/td_libs_Encoder.html
 
+// This is for the simulation w/ MATLAB
+
 // PIN ASSIGNMENTS
 int D2 = 4;     // disables both outputs of motor channels when LOW; toggling resets latched driver fault condition
 int M1DIR = 7;  // Motor 1 direction output
