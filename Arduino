@@ -1,0 +1,90 @@
+#include "Arduino.h"
+#include <Encoder.h> //https://www.pjrc.com/teensy/td_libs_Encoder.html
+
+// PIN ASSIGNMENTS
+int D2 = 4;     // disables both outputs of motor channels when LOW; toggling resets latched driver fault condition
+int M1DIR = 7;  // Motor 1 direction output
+int M2DIR = 8;  // Motor 2 direction output
+int M1PWM = 9;  // Motor 1 PWM speed output
+int M2PWM = 10; // Motor 2 PWM speed output
+int SF = 12;    // Status flag indicator (LOW = fault)
+int speed1 = 0; // Motor 1 speed percentage
+int speed2 = 0; // Motor 2 speed percentage
+int dir1 = 1;
+int dir2 = 0;
+int encoderM1_Int = 2;
+int encoderM1_noInt = 13;
+
+// VARIABLES
+double posM1raw = 0; //raw encoder counts
+double posM1 = 0; //position in Radians
+double posM1_old = 0;
+double posM1Setpoint = 0; //position SP in radians
+double errorM1 = 0; //error in radians
+double errorM1_old = 0;
+
+// PID VARIABLES
+const double Kp = 3250;
+const double Ki = 33361;
+const double Kd = 81;
+double D = 0;
+double I = 0;
+double pidM1;
+int outputMax = 255;
+
+double time_now = 0;
+int period = 5; //in milliseconds
+
+Encoder encoderM1(encoderM1_Int, encoderM1_noInt);
+
+void setup() {
+  // put your setup code here, to run once:
+  pinMode(D2, OUTPUT);
+  pinMode(M1DIR, OUTPUT);
+  pinMode(M2DIR, OUTPUT);
+  pinMode(M1PWM, OUTPUT);
+  pinMode(M2PWM, OUTPUT);
+  pinMode(SF, INPUT);
+}
+
+void loop() {
+  time_now = millis();
+  posM1Setpoint = 1;
+  
+  digitalWrite(D2, HIGH); //enables the motors
+
+  posM1raw = encoderM1.read(); //64 counts per revolution when counting both, units: encoder counts
+  posM1_old = posM1;
+  posM1 = (posM1raw / 50 / 64) * 6.28; //units: radians
+
+  errorM1_old = errorM1;
+  errorM1 = posM1Setpoint - posM1; //error in radians
+
+  D = (errorM1-errorM1_old)/(period*0.001); // change in error / time in seconds
+  I = I+(errorM1*period*0.001);   // integral of error
+  pidM1 = (Kp*errorM1) + (Ki*I) + (Kd*D);
+  if (pidM1 < 0) dir1 = 0; //set direction of motor
+  else dir1 = 1;
+
+  // PWM has a max output of 255, so we need to cap the PID output at 255
+  if (abs(pidM1) > 255){
+    if (pidM1 < 0) dir1 = 0;
+    else dir1 = 1;
+    pidM1 = outputMax;
+    int errSign = 1;
+    if (errorM1 < 0) errSign = -1;
+    errorM1 = errSign*min(outputMax/Kp, abs(errorM1));
+    I = (pidM1-Kp*errorM1-Kd*D)/Ki;
+  }
+
+// set SPEED
+  if (abs(errorM1) < 0.005) speed1 = 0;
+  else speed1 = int(abs(pidM1));
+  analogWrite(M1PWM, speed1);
+// set DIRECTION
+  if (dir1 == 0) digitalWrite(M1DIR, LOW);
+  else digitalWrite(M1DIR, HIGH);
+
+  while(millis() < time_now + period);  // delay for length of period
+}
+
