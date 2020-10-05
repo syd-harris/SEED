@@ -1,9 +1,7 @@
+//code for mini project
 #include "Arduino.h"
 #include <Encoder.h> //https://www.pjrc.com/teensy/td_libs_Encoder.html
 
-// This is for the simulation w/ MATLAB
-
-// PIN ASSIGNMENTS
 int D2 = 4;     // disables both outputs of motor channels when LOW; toggling resets latched driver fault condition
 int M1DIR = 7;  // Motor 1 direction output
 int M2DIR = 8;  // Motor 2 direction output
@@ -28,7 +26,7 @@ double errorM1_old = 0;
 // PID VARIABLES
 const double Kp = 3250;
 const double Ki = 33361;
-const double Kd = 81;
+const double Kd = 55;
 double D = 0;
 double I = 0;
 double pidM1;
@@ -36,10 +34,13 @@ int outputMax = 255;
 
 double time_now = 0;
 int period = 5; //in milliseconds
+char byt[32];
+int leng = 32;
 
 Encoder encoderM1(encoderM1_Int, encoderM1_noInt);
 
 void setup() {
+  Serial.begin(115200);
   // put your setup code here, to run once:
   pinMode(D2, OUTPUT);
   pinMode(M1DIR, OUTPUT);
@@ -48,45 +49,55 @@ void setup() {
   pinMode(M2PWM, OUTPUT);
   pinMode(SF, INPUT);
 }
-
 void loop() {
   time_now = millis();
-  posM1Setpoint = 1;
-  
-  digitalWrite(D2, HIGH); //enables the motors
-
-  posM1raw = encoderM1.read(); //64 counts per revolution when counting both, units: encoder counts
-  posM1_old = posM1;
-  posM1 = (posM1raw / 50 / 64) * 6.28; //units: radians
-
-  errorM1_old = errorM1;
-  errorM1 = posM1Setpoint - posM1; //error in radians
-
-  D = (errorM1-errorM1_old)/(period*0.001); // change in error / time in seconds
-  I = I+(errorM1*period*0.001);   // integral of error
-  pidM1 = (Kp*errorM1) + (Ki*I) + (Kd*D);
-  if (pidM1 < 0) dir1 = 0; //set direction of motor
-  else dir1 = 1;
-
-  // PWM has a max output of 255, so we need to cap the PID output at 255
-  if (abs(pidM1) > 255){
-    if (pidM1 < 0) dir1 = 0;
-    else dir1 = 1;
-    pidM1 = outputMax;
-    int errSign = 1;
-    if (errorM1 < 0) errSign = -1;
-    errorM1 = errSign*min(outputMax/Kp, abs(errorM1));
-    I = (pidM1-Kp*errorM1-Kd*D)/Ki;
+  if (Serial.available() > 0) {
+      posM1Setpoint = Serial.read();
+      posM1Setpoint = (posM1Setpoint * (3.14 / 2)) - 3.14/2;
   }
+      digitalWrite(D2, HIGH); //enables the motors
+    
+      posM1raw = encoderM1.read(); //64 counts per revolution when counting both, units: encoder counts
+      posM1_old = posM1;
+      posM1 = (posM1raw / 50 / 64) * 6.28; //units: radians
 
-// set SPEED
-  if (abs(errorM1) < 0.005) speed1 = 0;
-  else speed1 = int(abs(pidM1));
-  analogWrite(M1PWM, speed1);
-// set DIRECTION
-  if (dir1 == 0) digitalWrite(M1DIR, LOW);
-  else digitalWrite(M1DIR, HIGH);
+    
+      errorM1_old = errorM1;
+      errorM1 = posM1Setpoint - posM1; //error in radians
+    
+      D = (errorM1-errorM1_old)/(period*0.001); // change in error / time in seconds
+      I = I+(errorM1*period*0.001);   // integral of error
+      pidM1 = (Kp*errorM1) + (Ki*I) + (Kd*D);
+      if (pidM1 < 0) dir1 = 0; //set direction of motor
+      else dir1 = 1;
+    
+      // PWM has a max output of 255, so we need to cap the PID output at 255
+      if (abs(pidM1) > 255){
+        if (pidM1 < 0) dir1 = 0;
+        else dir1 = 1;
+        pidM1 = outputMax;
+        int errSign = 1;
+        if (errorM1 < 0) errSign = -1;
+        errorM1 = errSign*min(outputMax/Kp, abs(errorM1));
+        I = (pidM1-Kp*errorM1-Kd*D)/Ki;
+      }
+    
+    // set SPEED
+      if (abs(errorM1) < 0.005) speed1 = 0;
+      else speed1 = int(abs(pidM1));
+      if (speed1 > 0 && posM1 == posM1_old){  //if motor is stuck/jittering (position isn't changing bc direction is going back and forth rapidly,
+        dir1 = 0;                             //force direction to unstick
+      }
+      analogWrite(M1PWM, speed1);
+    // set DIRECTION
+      if (dir1 == 0) digitalWrite(M1DIR, LOW);
+      else digitalWrite(M1DIR, HIGH);
 
-  while(millis() < time_now + period);  // delay for length of period
+      if (millis() % 500 < period){
+        Serial.println(posM1);
+      }
+        
+      while(millis() < time_now + period);  // delay for length of period
+  
+
 }
-
