@@ -27,8 +27,8 @@ double errorM1_old = 0;
 const double Kp = 3250;
 const double Ki = 33361;
 const double Kd = 55;
-double D = 0;
-double I = 0;
+double D = 0; volts/degree/second
+double I = 0; volts/degree * second
 double pidM1;
 int outputMax = 255;
 
