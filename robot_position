@@ -1,0 +1,153 @@
+const int COUNTS_PER_REVOLUTION = 1600; // 1600 counts per revolution
+const double WHEEL_RADIUS = 0.076; // Radius of wheel is 0.76 m
+const double ROBOT_WIDTH = 0.281; // Width of robot is 0.281 m
+const double PI_VALUE = 3.1415926535897932;
+const double POSITION_STEP = (2 * 2 * PI_VALUE * WHEEL_RADIUS) / (double(COUNTS_PER_REVOLUTION)); // Calculate distance wheel rotates between consecutve interrupts
+
+volatile int valuePinLeft1 = 0; // Declare variable to store reading from pin 1 of left wheel's encoder
+volatile int valuePinLeft2 = 0; // Declare variable to store reading from pin 2 of let wheel's encoder
+
+volatile double positionLeft = 0; // Distance left wheel has rotated
+
+volatile double timeOldLeft = 0; // timeOldLeft keeps track of last time interrupt for left wheel was entered
+volatile double timeNewLeft = 0; // timeNewLeft is the time at which the ISR for the left wheel is next entered
+volatile double timeDeltaLeft = 0; // timeDeltaLeft is the time taken for the left wheel to rotate through two counts
+
+volatile double velocityLeft = 0; // Velocity with which left wheel rotates
+
+volatile int valuePinRight1 = 0; // Declare variable to store reading from pin 1 of right wheel's encoder
+volatile int valuePinRight2 = 0; // Declare variable to store reading from pin 2 of right wheel's encoder
+
+volatile double positionRight = 0; // Distance right whee has rotated
+
+volatile double timeOldRight = 0; // timeOldRight keeps track of last time interrupt for right wheel was entered
+volatile double timeNewRight = 0; // timeNewRight is the time at which the ISR for the right wheel is next entered 
+volatile double timeDeltaRight = 0; // timeDeltaRight is the time taken for the right wheel to rotate through two counts
+
+volatile double velocityRight = 0; // Velocty with which the right wheel rotates
+
+double phiAngle = 0; // phiAngle keeps track of the angle between the robot's axis and the x-axis
+double xPosition = 0; // xPosition is the x xomponent of the robot's posiion
+double yPosition = 0; // yPosition is the y component of the robot's position
+
+double timeDelta = 50; // timeDelta is the period of execution for the loop
+double startTime = millis(); // startTime is the time at which eac iteration of the loop begins executing
+
+double t0 = millis();
+double t = 0;
+volatile int updatePosition = 0;
+
+int leftWheelPin = 6; // For the left wheel's encoder, use pin 6 as the noninterrupt pin
+int rightWheelPin = 5; // For the right wheel's encoder, use pin 5 as the noninterrupt pin
+
+int leftWheelInterruptPin = 3; // For the left wheel's encoder, use pin 3 as the interrupt pin
+int rightWheelInterruptPin = 2; // For the right wheel's encoder, use pin 2 as the interrupt pin
+
+void setup() 
+{
+  Serial.begin(9600);
+  
+  pinMode(leftWheelPin, INPUT_PULLUP); // Set left wheel's pin as a pullup input
+  pinMode(leftWheelInterruptPin, INPUT_PULLUP); // Set left wheel's interrupt pin as a pullup input
+
+  pinMode(rightWheelPin, INPUT_PULLUP); // Set right wheel's pin as a pullup input
+  pinMode(rightWheelInterruptPin, INPUT_PULLUP); // Set right wheel's interrupt pin as a pullup interrupt
+  
+  attachInterrupt(digitalPinToInterrupt(leftWheelInterruptPin), myLeftWheelISR, RISING); // myLeftWheelISR will be entered when the digital signal on the left wheel's interrupt pin switches from 0 to 1
+  attachInterrupt(digitalPinToInterrupt(rightWheelInterruptPin), myRightWheelISR, RISING); // myRightWheelISR will entered when the digital signal on the right wheel's interrupt pin switches from 0 to 1
+}
+
+void loop() 
+{
+  startTime = millis(); // Measure the time at which loop execution begins
+
+  // The robot's angle and position will not change unless one of the wheels moves, causing the ISR to be entered. Then the ISR will set updatePosition to 1.
+  // When this happens, update the angle and position of the robot.
+  if (updatePosition == 1) 
+  {
+    // Calculate angle and position of robot compared to intial angle and position
+    phiAngle += ((timeDelta / 1000) * (velocityRight - velocityLeft)) / (ROBOT_WIDTH);      
+    xPosition += ((timeDelta / 1000) * cos(phiAngle) * (velocityLeft + velocityRight)) / 2; 
+    yPosition += ((timeDelta / 1000) * sin(phiAngle) * (velocityLeft + velocityRight)) / 2;
+  
+    updatePosition = 0; // Set updatePosition flag to 1 so that angle and position will not be updated until one of the wheels moves again
+  }
+
+  t = (millis() - t0)/1000; // t = time since code began running
+
+  // Print angle and position data
+  if (t < 1000)
+  {
+    Serial.print(t);
+    Serial.print("\t");
+    
+    Serial.print(xPosition);
+    Serial.print("\t");
+   
+    Serial.print(yPosition);
+    Serial.print("\t");
+
+    Serial.println(phiAngle);
+  }
+
+  // Set velocityLeft and velocityRight to 0 if none of the wheels have moved yet
+  if (updatePosition == 0)
+  {
+    velocityLeft = 0;
+    velocityRight = 0;
+  }
+  
+  delay(timeDelta - millis() + startTime); // Execute the main loop for timeDelta milliseconds.
+}
+
+void myLeftWheelISR()
+{
+  timeNewLeft = micros(); // Measure the time at which the ISR is entered
+  timeDeltaLeft = timeNewLeft - timeOldLeft; // Calculate the time passed since the ISR was last entered. This will be the amount of time the wheel took to otate two counts
+ 
+  updatePosition = 1; 
+    
+  valuePinLeft1 = digitalRead(leftWheelPin); // Read the digital value of the left wheel's pin
+  valuePinLeft2 = digitalRead(leftWheelInterruptPin); // Read the digital value of the left wheel's interrupt pin
+
+  if (valuePinLeft1 == valuePinLeft2) // If valueLeftPin1 == valueLeftPin2, the wheel is moving in the positive direction
+  {
+    // rotationValue2 += 2;                       // If valueLeftPin1 == valueLeftPin2, the wheel is moving in the positive direction
+    positionLeft -= POSITION_STEP;                // Since the las interrupt call, the wheel has traveled a distance POSITION_STEP in time timeDeltaLeft
+    velocityLeft = -(1000000 * POSITION_STEP) / timeDeltaLeft; // Use this information to compute the velocity of the left wheel's rotation
+  }
+  else
+  {
+    // rotationValue2 -= 2;                        // If valueLeftPin1 != valueLeftPin2, the wheel is rotating in the negative direction
+    positionLeft += POSITION_STEP;                 // Since the last interrupt call, the wheel has traveled a distance POSITION_STEP in time timeDeltaLeft
+    velocityLeft = (1000000 * POSITION_STEP) / timeDeltaLeft; // Use this information to compute the velocity of the left wheel's rotation
+  }
+
+  timeOldLeft = timeNewLeft; // Set timeOldLeft equal to timeNewLeft, so that the next interrupt call will use the time that this beganas the time the last interrupt call began
+}
+
+void myRightWheelISR()
+{
+  timeNewRight = micros(); // Measure the time at which the ISR is entered
+  timeDeltaRight = timeNewRight - timeOldRight; // Calculate the time passed since the ISR was last entered
+
+  updatePosition = 1;
+    
+  valuePinRight1 = digitalRead(rightWheelPin); // Read the digital value of the right wheel's pin
+  valuePinRight2 = digitalRead(rightWheelInterruptPin); // Read the digital value of the right wheel's interrupt pin
+    
+  if (valuePinRight1 == valuePinRight2)
+  {
+    // rotationValue3 += 2;                         // If valueRightPin1 == valueRightPin2, the wheel is moving in the positive direction
+    positionRight += POSITION_STEP;                 // Since the last interrupt call, the wheel has traveled a distance POSITION_STEP in time timeDeltaRight
+    velocityRight = (1000000 * POSITION_STEP) / timeDeltaRight; // Use this information to compute the velocity of the right wheel's rotation
+  }
+  else
+  {
+    // rotationValue3 -= 2;                          // If valueRightPin1 != valueRightPin2, the wheel is moving in the negative direction
+    positionRight -= POSITION_STEP;                  // Since the last interrupt call, the wheel has traveled a distance POSITION_STEP in time timeDeltaRight
+    velocityRight = -(1000000 * POSITION_STEP) / timeDeltaRight; // Use this information to compue the velocity of the right wheel's rotation
+  }
+
+  timeOldRight = timeNewRight; // Set timeOldRight equal to tmeNewRight, so hat the next interrupt call will use the time that this one began as the time that the last interrupt call began
+}
