@@ -1,11 +1,24 @@
 #include "Arduino.h"
 
+double phiAngleDesired = 3.1415926535897932; // ROTATION SETPOINT in radians
+double distanceTraveledDesired = 0.2; // DISTANCE SETPOINT in meters
+
+int togglePin = 13; // PIN to tell robot to GO.  REMOVE resistor shorted between 13 and GND to have robot GO.  
+
 int D2 = 4;     // disables both outputs of motor channels when LOW; toggling resets latched driver fault condition
 int M1DIR = 7;  // Motor 1 direction output
 int M2DIR = 8;  // Motor 2 direction output
 int M1PWM = 9;  // Motor 1 PWM speed output
 int M2PWM = 10; // Motor 2 PWM speed output
 int SF = 12;    // Status flag indicator (LOW = fault)
+
+int leftWheelPin = 6; // For the left wheel's encoder, use pin 6 as the noninterrupt pin
+int rightWheelPin = 5; // For the right wheel's encoder, use pin 5 as the noninterrupt pin
+
+int leftWheelInterruptPin = 3; // For the left wheel's encoder, use pin 3 as the interrupt pin
+int rightWheelInterruptPin = 2; // For the right wheel's encoder, use pin 2 as the interrupt pin
+
+
 int speed1 = 0; // Motor 1 speed percentage
 int speed2 = 0; // Motor 2 speed percentage
 
@@ -43,10 +56,8 @@ double yPosition = 0; // yPosition is the y component of the robot's position
 
 double distanceTraveled = 0;
 
-double phiAngleDesired = 3.1415926535897932;
 double angleError = 0;
 
-double distanceTraveledDesired = 0.2;
 double distanceTraveledError = 0;
 
 //PID Variables for angle
@@ -60,6 +71,7 @@ int outputMax = 50;
 // PID variables for distance
 double IDistance = 0;
 
+// WHY IS THERE A TIME DELTA AND PERIOD.  THERE ONLY NEEDS TO BE ONE
 int period = 5; //in milliseconds
 
 double timeDelta = 50; // timeDelta is the period of execution for the loop
@@ -69,21 +81,19 @@ double t0 = millis();
 double t = 0;
 volatile int updatePosition = 0;
 
-int leftWheelPin = 6; // For the left wheel's encoder, use pin 6 as the noninterrupt pin
-int rightWheelPin = 5; // For the right wheel's encoder, use pin 5 as the noninterrupt pin
-
-int leftWheelInterruptPin = 3; // For the left wheel's encoder, use pin 3 as the interrupt pin
-int rightWheelInterruptPin = 2; // For the right wheel's encoder, use pin 2 as the interrupt pin
-
 void setup() 
 {
   Serial.begin(115200);
+
+  pinMode(togglePin, INPUT_PULLUP);
+    
   pinMode(D2, OUTPUT);
   pinMode(M1DIR, OUTPUT);
   pinMode(M2DIR, OUTPUT);
   pinMode(M1PWM, OUTPUT);
   pinMode(M2PWM, OUTPUT);
   pinMode(SF, INPUT);
+
   
   pinMode(leftWheelPin, INPUT_PULLUP); // Set left wheel's pin as a pullup input
   pinMode(leftWheelInterruptPin, INPUT_PULLUP); // Set left wheel's interrupt pin as a pullup input
@@ -99,7 +109,8 @@ void loop()
 {
   startTime = millis(); // Measure the time at which loop execution begins
 
-  digitalWrite(D2, HIGH); // enables both motors
+  if (digitalRead(togglePin) == 1) digitalWrite(D2, HIGH); // enables both motors if Toggle Pin is HIGH
+  else digitalWrite(D2, LOW); // disables both motor if Toggle Pin is LOW
 
   // The robot's angle and position will not change unless one of the wheels moves, causing the ISR to be entered. Then the ISR will set updatePosition to 1.
   // When this happens, update the angle and position of the robot.
