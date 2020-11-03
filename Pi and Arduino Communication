@@ -1,0 +1,31 @@
+#this will likely need to be edited before submission
+
+#Set address
+ser = serial.Serial('/dev/ttyACM0', 115200, timeout=0.01)
+
+#Wait for connection to complete
+time.sleep(3)
+
+def ReadfromArduino():
+    if(ser.in_waiting > 0):
+        try:
+            line = ser.readline().decode('utf-8').rstrip()
+            lcd_string = ("serial output: \n" + line)
+            lcd.message = lcd_string
+        except:
+            lcd.message = "Communication\nError"
+            time.sleep(5)
+            lcd.clear()
+
+#Write to Arduino
+ ser.write(struct.pack('>B',#value being sent to arduino))
+
+
+#Arduino Code
+    if (Serial.available() > 0) {
+      posM1Setpoint = Serial.read(); #this reads the value from the register
+
+
+    if (millis() % 500 < period){
+        Serial.println(posM1);
+      } #this writes to a register that the pi then reads
