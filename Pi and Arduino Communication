@@ -1,4 +1,4 @@
-#this will likely need to be edited before submission
+#this will likely need to be edited before submission; probably need to change the timing
 
 #Set address
 ser = serial.Serial('/dev/ttyACM0', 115200, timeout=0.01)
