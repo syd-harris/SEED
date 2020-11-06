@@ -1,0 +1,158 @@
+from picamera.array import PiRGBArray
+from picamera import PiCamera
+import serial
+import time
+import cv2
+import numpy as np
+import math
+import struct
+import board
+import busio
+import adafruit_character_lcd.character_lcd_rgb_i2c as character_lcd
+
+
+# Camera Qualities
+FOCAL_LENGTH = 660;
+CX, CY = 1088/2, 816/2
+K = np.array([[FOCAL_LENGTH, 0, CX], [0, FOCAL_LENGTH, CY], [0, 0, 1]])
+
+MARKER_LENGTH = 150
+
+lcd_columns = 16
+lcd_rows = 2
+
+i2c = busio.I2C(board.SCL, board.SDA)
+
+lcd = character_lcd.Character_LCD_RGB_I2C(i2c, lcd_columns, lcd_rows)
+
+lcd.clear()
+lcd.color = [0, 0, 100]
+time.sleep(1)
+
+#Set address
+ser = serial.Serial('/dev/ttyACM0', 115200, timeout=0.01)
+
+
+#Wait for connection to complete
+time.sleep(3)
+
+#Function to read serial
+def ReadfromArduino():
+    if(ser.in_waiting > 0):
+        try:
+            line = ser.readline().decode('utf-8').rstrip()
+            lcd_string = ("serial output: \n" + line)
+            lcd.message = lcd_string
+        except:
+            lcd.message = "Communication\nError"
+            time.sleep(5)
+            lcd.clear()
+
+def getloc(markercorner, image):
+    center = (0,0)
+    for marker in markercorner:
+        for corner in marker:
+            cv2.line(image, (corner[0][0], corner[0][1]), (corner[1][0], corner[1][1]), (0,0,255), thickness=1)
+            cv2.line(image, (corner[1][0], corner[1][1]), (corner[2][0], corner[2][1]), (0,0,255), thickness=1)
+            cv2.line(image, (corner[2][0], corner[2][1]), (corner[3][0], corner[3][1]), (0,0,255), thickness=1)
+            cv2.line(image, (corner[3][0], corner[3][1]), (corner[0][0], corner[0][1]), (0,0,255), thickness=1)
+            center = (((corner[0][0] + corner[1][0] + corner[2][0] + corner[3][0])/4), ((corner[0][1] + corner[1][1] + corner[2][1] + corner[3][1])/4))
+    return center
+    
+def getvideo():
+# initialize the camera and grab a reference to the raw camera capture
+    camera = PiCamera()
+    camera.resolution = (1088, 816)
+    camera.framerate = 32
+    rawCapture = PiRGBArray(camera, size=(1088, 816))
+
+# allow the camera to warmup
+    time.sleep(0.1)
+
+    data_sent = False
+
+# capture frames from the camera
+    for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
+        image = frame.array
+        markercorner = exercise5(image)
+        if markercorner:
+            
+            center_point = getloc(markercorner, image)
+            #print("Corners: ", markercorner)
+            markercorner = np.array(markercorner[0][0])
+            angle, distance = (getAngle(markercorner, center_point))
+            angle = round(math.degrees(angle), 2)
+            distance = round(distance, 2)
+            if data_sent:
+                time.sleep(3)
+                #Write to Arduino
+                data_string = "1, angle, distance"
+                ser.write("1, angle, distance".encode('ascii'))
+                time.sleep(1)
+            else:
+                data_sent = True
+                #Write to Arduino
+                data_string = "1, angle, distance"
+                ser.write("1, angle, distance".encode('ascii'))
+                time.sleep(1)
+                
+        else:
+            data_string = "0, 0, 0"
+            #ser.write(("0,0,0".encode('utf-8')))
+            time.sleep(1)
+    # show the frame
+        cv2.imshow("Frame", image)
+        key = cv2.waitKey(1) & 0xFF
+        # ReadfromArduino()
+
+    # clear the stream in preparation for the next frame
+        rawCapture.truncate(0)
+
+    # if the `q` key was pressed, break from the loop
+        if key == ord("q"):
+            break
+
+def convertgray(image):
+ # Coverts image into gray image
+    grayimg = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY )
+# cv2.imshow("Gray image", grayimg)
+# cv2.imwrite("grayimg.jpg", grayimg)
+    cv2.waitKey(1)
+# cv2.destroyAllWindows()
+ # Used by other fuctions so image needs to be returned
+    return(grayimg)
+
+def exercise5(image):
+ #Checks image for aruco markers and prints value or np marker found
+    dictionary = cv2.aruco.Dictionary_get(cv2.aruco.DICT_6X6_250)
+
+ # Makes image gray
+    image = convertgray(image)
+ # Initialize the detector parameters using default values
+    parameters = cv2.aruco.DetectorParameters_create()
+ # Detect the markers in the image
+    markerCorners, markerIds, rejectedCandidates = cv2.aruco.detectMarkers(image, dictionary, parameters=parameters)
+    #if markerIds is None:
+        #print("No Markers Found")
+    #else:
+        #print("Found marker(s): ", markerIds)
+ # Returns corner values to be used by other functions
+    return(markerCorners)
+
+
+def getAngle(corners, center):
+    width = abs(corners[0][0]-corners[2][0])
+    distance = FOCAL_LENGTH * MARKER_LENGTH / (width * 1000)
+    angle = (center[0]-CX) * (54 / 1080)
+    print("X value: ", (center[0]-CX))
+    print("Distance: ", distance)
+    print("Angle1: ", angle)
+    return angle, distance
+
+
+def main():
+    
+    getvideo()
+    
+if __name__ == "__main__":
+    main()
