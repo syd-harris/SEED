@@ -24,7 +24,7 @@ def ReadfromArduino():
 #Arduino Code
    if(Serial.available()){
   String rxString = "";
-  String strArr[2]; //Set the size of the array to equal the number of values you will be receiveing.
+  String strArr[3]; //Set the size of the array to equal the number of values you will be receiveing.
   //Keep looping until there is something in the buffer.
   while (Serial.available()) {
     //Delay to allow byte to arrive in input buffer.
@@ -48,9 +48,10 @@ def ReadfromArduino():
       arrayIndex++;
     }
   }
-  //Put values from the array into the variables.
+  //Put values from the array into the variables; change the variable names to what is needed.
   String value1 = strArr[0];
   String value2 = strArr[1];
-  //Convert string to int if you need it.
-  int intValue1 = value1.toInt();
+  String value3 = strArr[2];
+  //This converts the string to a double; do it for each variable
+  int intValue1 = value1.toDouble();
 }
