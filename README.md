@@ -1,4 +1,8 @@
 # SEED
-This is the GitHub repository for Team 11's EENG350 project, Fall 2020.  
+Files for Demo 2.
 
-Test
+Computer vision code goes onto Pi to detect beacon, angle from beacon, distance from beacon.
+
+Arduino Code implements the controls scheme as outlined in the assignment to perform the neccessary tasks.
+
+Communication code has been embedded into the Arduino and Pi files to allow the Pi to send its measured data to the Arduino over Serial.
