@@ -134,7 +134,7 @@ double V_delta = 0;
 
 
 double time_now = 0;
-int period = 5; //milliseconds
+double period = 5; //milliseconds
 double timeStart = 4294967296;
 bool timeFlag = false;
 
@@ -226,9 +226,16 @@ void loop() {
   posM2raw = pos(encoderM2_A, encoderM2_B, posM2raw_intPinOnly, encoderM2_AState);
   posM2 = double(posM2raw)/encoderCountsPerRev*2*3.142;
   velocityRobotLinear = WHEEL_RADIUS * (velocityM1 + velocityM2) / 2;
-  positionRobotLinear = -WHEEL_RADIUS * (posM1 + posM2) / 2; // chanve to X and Y
+  
+  // positionRobotLinear = -WHEEL_RADIUS * (posM1 + posM2) / 2; // chanve to X and Y
+
+  positionRobotLinear += ((period / 1000) * WHEEL_RADIUS * (velocityM1 + velocityM2)) / 2;
+  
   velocityRobotRotational = -WHEEL_RADIUS * (velocityM1 - velocityM2) / WHEEL_DISTANCE;
-  positionRobotRotational = WHEEL_RADIUS * (posM1 - posM2) / WHEEL_DISTANCE;
+  
+  // positionRobotRotational = WHEEL_RADIUS * (posM1 - posM2) / WHEEL_DISTANCE;
+
+  positionRobotRotational += ((period / 1000) * WHEEL_RADIUS * (velocityM2 - velocityM1)) / WHEEL_DISTANCE;
 
   switch(robotState) {
   // Rotate robot until the camera detects the marker. Then set the wheel speeds to 0
@@ -247,9 +254,9 @@ void loop() {
           timeFlagged = time_now;
           flag = 1;
         }
-//        if (beaconAngle < 0) {
+
         positionRobotRotationalSP = positionRobotRotational + beaconAngle; //beaconAngle;
-//        }
+
         if (time_now > timeFlagged + 1000){
           robotState = 1;
         }
@@ -261,7 +268,8 @@ void loop() {
       
       if (abs(positionRobotRotationalError) < 0.01) {
         robotState = 2;  
-        positionRobotLinearSP = positionRobotLinear + beaconDistance - .25;
+        positionRobotLinearSP = positionRobotLinear + beaconDistance - .10;
+        
       }
 
       break;      
@@ -287,7 +295,7 @@ void loop() {
 //        dir1 = 0;
 //        dir2 = 0;
 
-        positionRobotRotationalSP = positionRobotRotational + 2 * PI_VALUE + 0.1;        
+        positionRobotRotationalSP = positionRobotRotational + 6.28;        
         robotState = 4;
       }
 
@@ -305,10 +313,18 @@ void loop() {
   case 5:
       speed1 = 0;
       speed2 = 0;
+      
 
       break;
       
   }
+  
+//  Serial.print("Pos SP: ");
+//  Serial.println(positionRobotRotationalSP);
+//    Serial.print("Pos M1: ");
+//  Serial.println(posM1);
+//    Serial.print("Pos M2: ");
+//  Serial.println(posM2);
 
   // PID controller for Groe PID
   positionRobotLinearError = positionRobotLinearSP - positionRobotLinear;
@@ -429,7 +445,8 @@ void loop() {
      
   digitalWrite(M1DIR, dir1);
   digitalWrite(M2DIR, !dir2);
-  digitalWrite(D2, HIGH);
+  if (robotState == 5) digitalWrite(D2, LOW);
+  else digitalWrite(D2, HIGH);
   analogWrite(M1PWM, int(speed1*2.55));
   analogWrite(M2PWM, int(speed2*2.55));
      
@@ -485,7 +502,7 @@ void encoderM2_ISR(){
     encoderM2_ISR_timeLast = encoderM2_ISR_time;
 }
 
-int pos(int pinA, int pinB, int count, int AState){
+int pos(int pinA, int pinB, int count, int AState) {
   //adjust actual position by -1, 0, +1 depending on current values of pins
   int AStateCur = digitalRead(pinA);
   int BStateCur = digitalRead(pinB);
